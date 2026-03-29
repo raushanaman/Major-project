@@ -1,11 +1,11 @@
-const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const User = require('../models/User');
-const Shop = require('../models/Shop');
-const router = express.Router();
+const User = require('../../../models/User');
+const Shop = require('../../../models/Shop');
+
+const strongPwd = /^(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
 
 const signToken = (user) =>
   jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -15,53 +15,54 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
-// Signup
-router.post('/signup', async (req, res) => {
+const signup = async (req, res) => {
   const { firstName, lastName, email, password, role, shopName, phone, address, category } = req.body;
-  const strongPwd = /^(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
   if (!strongPwd.test(password))
     return res.status(400).json({ message: 'Password must be at least 8 characters and include a special character' });
   try {
     if (await User.findOne({ email }))
       return res.status(400).json({ message: 'Email already registered' });
-
     const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({ firstName, lastName, email, password: hashed, role, shopName, phone, address, category });
-
-    if (role === 'merchant' && shopName) {
+    if (role === 'merchant' && shopName)
       await Shop.create({ owner: user._id, name: shopName, category: category?.toLowerCase() || 'groceries', phone, address });
-    }
-
     const token = signToken(user);
     res.status(201).json({ message: 'User created', token, userId: user._id, firstName: user.firstName, role: user.role });
   } catch {
     res.status(500).json({ message: 'Server error' });
   }
-});
+};
 
-// Login
-router.post('/login', async (req, res) => {
+const login = async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ message: 'Invalid credentials' });
-
     const token = signToken(user);
     res.json({ message: 'Login successful', token, userId: user._id, firstName: user.firstName, role: user.role });
   } catch {
     res.status(500).json({ message: 'Server error' });
   }
-});
+};
 
-// Change Password (logged-in user)
-router.post('/change-password', async (req, res) => {
+const getMe = async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ message: 'Unauthorized' });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password');
+    res.json(user);
+  } catch {
+    res.status(401).json({ message: 'Invalid token' });
+  }
+};
+
+const changePassword = async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'Unauthorized' });
   const { currentPassword, newPassword } = req.body;
-  const strongPwd = /^(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
   if (!strongPwd.test(newPassword))
     return res.status(400).json({ message: 'Password must be at least 8 characters and include a special character' });
   try {
@@ -75,37 +76,18 @@ router.post('/change-password', async (req, res) => {
   } catch {
     res.status(500).json({ message: 'Server error' });
   }
-});
+};
 
-// Get current user
-router.get('/me', async (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'Unauthorized' });
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
-    res.json(user);
-  } catch {
-    res.status(401).json({ message: 'Invalid token' });
-  }
-});
-
-// Forgot Password — send reset link
-router.post('/forgot-password', async (req, res) => {
+const forgotPassword = async (req, res) => {
   const { email } = req.body;
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: 'No account found with this email' });
-
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetExpiry = Date.now() + 15 * 60 * 1000; // 15 minutes
-
     user.resetToken = resetToken;
-    user.resetTokenExpiry = resetExpiry;
+    user.resetTokenExpiry = Date.now() + 15 * 60 * 1000;
     await user.save();
-
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-
     await transporter.sendMail({
       from: `"Mandi-360" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -119,33 +101,28 @@ router.post('/forgot-password', async (req, res) => {
         </div>
       `,
     });
-
     res.json({ message: 'Reset link sent to your email' });
-  } catch (err) {
+  } catch {
     res.status(500).json({ message: 'Failed to send email. Try again.' });
   }
-});
+};
 
-// Reset Password — set new password
-router.post('/reset-password/:token', async (req, res) => {
+const resetPassword = async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
-  const strongPwd = /^(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
   if (!strongPwd.test(password))
     return res.status(400).json({ message: 'Password must be at least 8 characters and include a special character' });
   try {
     const user = await User.findOne({ resetToken: token, resetTokenExpiry: { $gt: Date.now() } });
     if (!user) return res.status(400).json({ message: 'Reset link is invalid or expired' });
-
     user.password = await bcrypt.hash(password, 10);
     user.resetToken = undefined;
     user.resetTokenExpiry = undefined;
     await user.save();
-
     res.json({ message: 'Password reset successful' });
   } catch {
     res.status(500).json({ message: 'Server error' });
   }
-});
+};
 
-module.exports = router;
+module.exports = { signup, login, getMe, changePassword, forgotPassword, resetPassword };
