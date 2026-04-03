@@ -11,12 +11,16 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder:         'mandi360/products',
+    folder:          'mandi360/products',
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    transformation: [{ width: 800, height: 800, crop: 'limit' }],
+    transformation: [
+      { width: 800, height: 800, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' },
+    ],
   },
 });
 
-const upload = multer({ storage });
+const uploadLimits = { fileSize: 5 * 1024 * 1024 }; // 5MB max per file
+const upload         = multer({ storage, limits: uploadLimits });
+const uploadMultiple = multer({ storage, limits: uploadLimits }).array('images', 6);
 
-module.exports = { cloudinary, upload };
+module.exports = { cloudinary, upload, uploadMultiple };

@@ -6,11 +6,12 @@ const getStats = async (req, res) => {
   try {
     const [totalShops, totalOrders, totalUsers] = await Promise.all([
       Shop.countDocuments(),
-      Order.countDocuments(),
+      Order.countDocuments({ status: { $ne: 'cancelled' } }), // cancelled exclude
       User.countDocuments(),
     ]);
 
     const topShops = await Order.aggregate([
+      { $match: { status: { $ne: 'cancelled' } } }, // cancelled orders exclude
       { $unwind: '$items' },
       { $group: {
           _id: '$items.shop',

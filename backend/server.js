@@ -10,6 +10,7 @@ const orderRoutes   = require('./src/modules/order/order.routes');
 const paymentRoutes = require('./src/modules/payment/payment.routes');
 const adminRoutes   = require('./src/modules/admin/admin.routes');
 const reviewRoutes  = require('./src/modules/review/review.routes');
+const userRoutes    = require('./src/modules/user/user.routes');
 
 const app = express();
 app.use(cors());
@@ -22,6 +23,7 @@ app.use('/api/orders',   orderRoutes);
 app.use('/api/payment',  paymentRoutes);
 app.use('/api/admin',    adminRoutes);
 app.use('/api/reviews',  reviewRoutes);
+app.use('/api/user',     userRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

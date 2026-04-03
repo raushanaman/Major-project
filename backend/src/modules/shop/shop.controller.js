@@ -46,9 +46,9 @@ const updateShop = async (req, res) => {
 
 const getMyShop = async (req, res) => {
   try {
-    const shop = await Shop.findOne({ owner: req.user.id });
-    if (!shop) return res.status(404).json({ message: 'No shop found' });
-    res.json(shop);
+    const shops = await Shop.find({ owner: req.user.id });
+    if (!shops.length) return res.status(404).json({ message: 'No shop found' });
+    res.json(shops.length === 1 ? shops[0] : shops);
   } catch {
     res.status(500).json({ message: 'Server error' });
   }

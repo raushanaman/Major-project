@@ -18,7 +18,7 @@ const createOrder = async (req, res) => {
 
 const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, items, total, address } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, items, total, address, paymentMethod } = req.body;
 
     const body     = razorpay_order_id + '|' + razorpay_payment_id;
     const expected = crypto
@@ -30,20 +30,22 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid signature' });
 
     const order = await Order.create({
-      user:      req.user.id,
-      items:     (items || []).map(i => ({
+      user:          req.user.id,
+      items:         (items || []).map(i => ({
         name:   i.name,
         price:  i.price,
         qty:    i.qty,
         emoji:  i.emoji,
-        shop:   i.shop,
+        shop:   i.shop   || '',
         shopId: i.shopId || null,
-        image:  i.image || null,
+        image:  i.image  || null,
       })),
-      total:     total || 0,
-      address:   address || '',
-      status:    'confirmed',
-      paymentId: razorpay_payment_id,
+      total:         total || 0,
+      address:       address || '',
+      status:        'confirmed',
+      paymentMethod: paymentMethod || 'razorpay',
+      paymentStatus: 'paid',
+      paymentId:     razorpay_payment_id,
     });
 
     res.json({ success: true, paymentId: razorpay_payment_id, orderId: order._id });
